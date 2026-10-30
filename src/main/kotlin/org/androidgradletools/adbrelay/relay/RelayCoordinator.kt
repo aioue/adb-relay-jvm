@@ -1,7 +1,9 @@
 package org.androidgradletools.adbrelay.relay
 
 import io.ktor.server.websocket.DefaultWebSocketServerSession
+import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
+import io.ktor.websocket.close
 import io.ktor.websocket.send
 import kotlinx.coroutines.CompletableDeferred
 
@@ -13,7 +15,8 @@ private sealed class RegisterOutcome {
         val b: RelayCoordinator.Pending,
     ) : RegisterOutcome()
 
-    object Waiting : RegisterOutcome()
+    /** [replaced] is an earlier waiter with the same role and token, now displaced. */
+    data class Waiting(val replaced: RelayCoordinator.Pending?) : RegisterOutcome()
 }
 
 /**
@@ -37,8 +40,7 @@ internal class RelayCoordinator {
                     val bToA = pending.drainBufferSnapshot()
                     return@synchronized RegisterOutcome.Matched(aToB, bToA, other, pending)
                 }
-                pendingDevice[token] = pending
-                return@synchronized RegisterOutcome.Waiting
+                return@synchronized RegisterOutcome.Waiting(pendingDevice.put(token, pending))
             }
             val other = pendingDevice.remove(token)
             if (other != null) {
@@ -46,8 +48,7 @@ internal class RelayCoordinator {
                 val bToA = other.drainBufferSnapshot()
                 return@synchronized RegisterOutcome.Matched(aToB, bToA, pending, other)
             }
-            pendingDev[token] = pending
-            RegisterOutcome.Waiting
+            RegisterOutcome.Waiting(pendingDev.put(token, pending))
         }
 
         return when (outcome) {
@@ -66,7 +67,14 @@ internal class RelayCoordinator {
                 }
                 false
             }
-            RegisterOutcome.Waiting -> true
+            is RegisterOutcome.Waiting -> {
+                // The displaced waiter can never be paired now. Close it rather than leave it
+                // open, holding its pre-pairing buffer, until its client gives up.
+                outcome.replaced?.takeIf { it.session !== pending.session }?.session?.close(
+                    CloseReason(CloseReason.Codes.NORMAL, "replaced by a newer connection"),
+                )
+                true
+            }
         }
     }
 
