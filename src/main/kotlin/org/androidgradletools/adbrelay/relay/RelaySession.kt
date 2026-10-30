@@ -13,22 +13,37 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.withTimeoutOrNull
 import io.ktor.websocket.readBytes
 
 /**
  * WebSocket route compatible with [android-ide-extension/tools/remote-adb-relay/relay.cjs]:
  * first frame UTF-8 JSON handshake, then binary mux bytes forwarded to the paired peer.
  */
-internal fun Routing.relayWebSocketRoute(coordinator: RelayCoordinator) {
+internal fun Routing.relayWebSocketRoute(
+    coordinator: RelayCoordinator,
+    handshakeTimeoutMillis: Long = HANDSHAKE_TIMEOUT_MILLIS,
+) {
     webSocket("/") {
-        handleRelayWebSocket(coordinator)
+        handleRelayWebSocket(coordinator, handshakeTimeoutMillis)
     }
 }
 
-private suspend fun DefaultWebSocketServerSession.handleRelayWebSocket(coordinator: RelayCoordinator) {
+/** How long a new socket may take to send its JSON handshake before the relay closes it. */
+internal const val HANDSHAKE_TIMEOUT_MILLIS: Long = 30_000L
+
+private suspend fun DefaultWebSocketServerSession.handleRelayWebSocket(
+    coordinator: RelayCoordinator,
+    handshakeTimeoutMillis: Long,
+) {
+    // Without a deadline, a socket that never sends its handshake stays open indefinitely.
     val first = try {
-        incoming.receive()
+        withTimeoutOrNull(handshakeTimeoutMillis) { incoming.receive() }
     } catch (_: ClosedReceiveChannelException) {
+        return
+    }
+    if (first == null) {
+        close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "handshake timeout"))
         return
     }
     if (first !is Frame.Text) {

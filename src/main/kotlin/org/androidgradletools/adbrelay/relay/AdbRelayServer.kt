@@ -48,11 +48,14 @@ fun Application.adbRelayModule() {
     relayModule(RelayCoordinator())
 }
 
-internal fun Application.relayModule(coordinator: RelayCoordinator) {
+internal fun Application.relayModule(
+    coordinator: RelayCoordinator,
+    handshakeTimeoutMillis: Long = HANDSHAKE_TIMEOUT_MILLIS,
+) {
     install(WebSockets) {
         maxFrameSize = 256L * 1024L * 1024L
     }
     routing {
-        relayWebSocketRoute(coordinator)
+        relayWebSocketRoute(coordinator, handshakeTimeoutMillis)
     }
 }

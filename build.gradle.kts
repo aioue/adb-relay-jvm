@@ -45,6 +45,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
 
     testImplementation(kotlin("test"))
+    testImplementation("io.ktor:ktor-client-cio")
+    testImplementation("io.ktor:ktor-client-websockets")
 }
 
 application {
