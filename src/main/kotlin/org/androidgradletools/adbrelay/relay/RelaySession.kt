@@ -9,9 +9,7 @@ import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import io.ktor.websocket.send
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import io.ktor.websocket.readBytes
 
@@ -50,7 +48,14 @@ private suspend fun DefaultWebSocketServerSession.handleRelayWebSocket(coordinat
         }
         val peer = pending.peerFuture.await()
         pending.drainBufferTo(peer)
-        runPairedBridge(this, peer)
+        // Each side's handler forwards only its own incoming frames. Both handlers
+        // used to bridge both directions, so two coroutines read each incoming
+        // channel and their sends to the peer interleaved out of order.
+        try {
+            forwardBinaryFrames(this, peer)
+        } finally {
+            runCatching { peer.close() }
+        }
     } finally {
         coordinator.removePendingWebSocket(handshake.token, handshake.role, this)
     }
@@ -92,25 +97,6 @@ private suspend fun DefaultWebSocketServerSession.waitForPeerWithBuffering(
         }
     }
     return false
-}
-
-private suspend fun runPairedBridge(a: DefaultWebSocketServerSession, b: DefaultWebSocketServerSession) {
-    coroutineScope {
-        launch {
-            try {
-                forwardBinaryFrames(a, b)
-            } finally {
-                runCatching { b.close() }
-            }
-        }
-        launch {
-            try {
-                forwardBinaryFrames(b, a)
-            } finally {
-                runCatching { a.close() }
-            }
-        }
-    }
 }
 
 private suspend fun forwardBinaryFrames(from: DefaultWebSocketServerSession, to: DefaultWebSocketServerSession) {
