@@ -137,3 +137,4 @@ Attach [`prompts/specs.md`](prompts/specs.md) as the single source of truth.
 Reference implementations:
 - **JVM (this repo):** `src/main/kotlin/org/androidgradletools/adbrelay/relay/`
 - **Node (upstream):** `android-ide-extension/tools/remote-adb-relay/relay.cjs`
+- **Python:** [aioue/adb-relay-python](https://github.com/aioue/adb-relay-python) — standard library only. Its `tests/test_conformance.py` checks the section 10 compliance list and can be pointed at any relay with `ADB_RELAY_URL`.
