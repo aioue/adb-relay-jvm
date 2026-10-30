@@ -48,9 +48,21 @@ fun Application.adbRelayModule() {
     relayModule(RelayCoordinator())
 }
 
-internal fun Application.relayModule(coordinator: RelayCoordinator) {
+/** Server ping interval; a peer that misses a pong for [PING_TIMEOUT_MILLIS] is closed. */
+internal const val PING_PERIOD_MILLIS: Long = 15_000L
+internal const val PING_TIMEOUT_MILLIS: Long = 15_000L
+
+internal fun Application.relayModule(
+    coordinator: RelayCoordinator,
+    pingPeriodMillis: Long = PING_PERIOD_MILLIS,
+    pingTimeoutMillis: Long = PING_TIMEOUT_MILLIS,
+) {
     install(WebSockets) {
         maxFrameSize = 256L * 1024L * 1024L
+        // Without pings, a peer that disappears without closing (a phone changing networks)
+        // stays paired until TCP gives up, and its reconnect waits for a peer that is taken.
+        this.pingPeriodMillis = pingPeriodMillis
+        timeoutMillis = pingTimeoutMillis
     }
     routing {
         relayWebSocketRoute(coordinator)
